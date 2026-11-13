@@ -142,6 +142,10 @@ cleanup_backup/
 archive_local/
 local_backups/
 
+# 本地运行/开发数据（studio 工作台与验收产物，绝不入仓）
+data/
+.data-dev/
+
 # 进程ID文件
 *.pid
 *.pid.json
