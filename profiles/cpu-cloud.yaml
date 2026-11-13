@@ -1,0 +1,14 @@
+# Profile A：无 GPU 本机（03 号双环境方案）
+# 引擎链有序降级；未实现的引擎名由 Registry 记录降级后继续（P0 阶段）。
+profile: cpu-cloud
+chains:
+  asr: [bailian, whisper_cpu, paraformer_cpu, mock]
+  diarize: [campp_cpu, mock]
+  signals: [danmaku, audio, mock]   # 并行抽取器列表，非降级链
+  llm: [openai_cloud, ollama_local, mock]
+  hooks: [text_overlay, edge_tts, mock]
+  render: [x264, mock]
+options:
+  allow_paid_generation: false   # L3/L4 生成钩子计费开关，默认关
+  max_concurrency: 1
+  review_loop: true              # P1-2 复审环，成本敏感可关

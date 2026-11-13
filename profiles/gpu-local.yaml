@@ -1,0 +1,14 @@
+# Profile B：有 GPU 家用（RTX 5080，03 号双环境方案）
+# GPU 只作加速器不作依赖：每条链都有 CPU/云兜底。
+profile: gpu-local
+chains:
+  asr: [whisper_gpu, paraformer_gpu, bailian, mock]
+  diarize: [campp_gpu, campp_cpu, mock]
+  signals: [danmaku, audio, visual, mock]
+  llm: [openai_cloud, ollama_local, mock]
+  hooks: [text_overlay, edge_tts, wan_local, mock]
+  render: [nvenc, x264, mock]
+options:
+  allow_paid_generation: false
+  max_concurrency: 2
+  review_loop: true              # P1-2 复审环，成本敏感可关
