@@ -7,6 +7,18 @@ Dockerfile*   text eol=lf
 *.yml         text eol=lf
 *.yaml        text eol=lf
 
+# Frontend sources: upstream tests scan raw source with LF-only regexes
+# (e.g. output-share.test.cjs). A CRLF checkout on Windows breaks them.
+# SliceStudio patch: keep frontend text files LF (see docs/UPSTREAM_PATCHES.md).
+*.ts          text eol=lf
+*.tsx         text eol=lf
+*.js          text eol=lf
+*.cjs         text eol=lf
+*.mjs         text eol=lf
+*.json        text eol=lf
+*.css         text eol=lf
+*.html        text eol=lf
+
 # Windows-native scripts keep CRLF.
 *.ps1         text eol=crlf
 *.bat         text eol=crlf
