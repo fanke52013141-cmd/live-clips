@@ -7,6 +7,7 @@ import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { message } from 'antd'
 import dayjs from 'dayjs'
 import FloatingAnchorNav from '../ui/FloatingAnchorNav'
+import PipelineSteps from '../ui/PipelineSteps'
 import { useProjectStore, Collection } from '../store/useProjectStore'
 import { projectApi, speechApi } from '../services/api'
 import StudioResults from '../features/studio/StudioResults'
@@ -384,6 +385,12 @@ const ProjectDetailPage: React.FC = () => {
           )}
         </div>
       </header>
+
+      {/* 制作流程步骤条：呈现流程位置（frontend/DESIGN.md「流程感」） */}
+      <PipelineSteps
+        currentIndex={isFailed ? 3 : clips.length > 0 ? 6 : currentProject.status === 'pending' ? 1 : 2}
+        failed={isFailed}
+      />
 
       {isCompleted || isVisual ? (
         <div id="section-results">

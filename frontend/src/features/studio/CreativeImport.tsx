@@ -451,9 +451,11 @@ export default function CreativeImport({ onImported, blocked = false, onBlocked,
       const body = new FormData()
       body.append('goal', options.goal); body.append('language', options.language); body.append('instruction', options.instruction)
       platforms.forEach(platform => body.append('platforms', platform))
-      // 「先看 AI 方案」走审阅（auto_start=false → ImportReview 确认后再制作）；
+      // 「先看 AI 方案」走审阅（auto_start=false → ImportReview 确认后再制作）
+      // 并开启候选采纳关卡（选段完成后候选落 on_demand，等用户逐条采纳渲染）；
       // 「生成成片」保持一键直出（auto_start=true）。
       body.append('auto_start', reviewFirst ? 'false' : 'true')
+      if (reviewFirst) body.append('review_before_render', 'true')
       body.append('portrait_style', options.portrait_style || 'auto')
       const portraitChosen = platforms.some(platform => !['bilibili', 'youtube_long', 'original'].includes(platform))
       const styleKey = templatesOn && visualOn && portraitChosen ? (source === 'file' ? (file ? `file:${file.name}:${file.size}:${file.lastModified}` : null) : (url.trim() ? `url:${url.trim()}` : null)) : null

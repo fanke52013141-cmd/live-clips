@@ -3,6 +3,7 @@ import { t } from '../../i18n'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Btn } from '../../ui'
+import PipelineSteps from '../../ui/PipelineSteps'
 import { useWorkspace } from './useWorkspace'
 import { studioApi, errorText } from './api'
 import PlanSummary from './PlanSummary'
@@ -23,7 +24,11 @@ export default function ImportReview() {
   const running=workspace.analysis?.status==='running'
   const producing=running&&workspace.analysis?.phase==='production'
   if(!id)return null
+  // 流程步骤条（frontend/DESIGN.md「流程感」）：方案确认=步骤 2；
+  // 制作已开始（producing）则推进到渲染/终审由详情页步骤条接管
+  const reviewIndex = producing ? 5 : 1
   return <main className="ac-page studio-import-review">
+    <PipelineSteps currentIndex={reviewIndex} />
     <button className="ac-back" onClick={()=>navigate('/')}>{t("‹ 项目")}</button>
     <h1 className="ac-title">{t("确认要做什么")}</h1>
     <p className="studio-muted">{t("AI 先看一遍素材给出建议；你确认后才开始正式剪辑。")}</p>

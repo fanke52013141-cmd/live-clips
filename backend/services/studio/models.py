@@ -334,6 +334,9 @@ class ImportOptions(BaseModel):
     instruction: str = Field(default='', max_length=1000)
     platforms: list[str] = Field(default_factory=lambda: ['douyin'], min_length=1, max_length=8)
     auto_start: bool = False
+    # 「先看 AI 方案」流程：AI 选段完成后暂停，候选全部落 on_demand，
+    # 由用户在详情页逐条采纳渲染（frontend/DESIGN.md 候选采纳关卡）
+    review_before_render: bool = False
     portrait_style: Literal['auto', 'interview', 'podcast'] = 'auto'
     html_template: Literal['editorial', 'street', 'news', 'cinema', 'classic'] | None = None
     recommended_template: Literal['editorial', 'street', 'classic'] | None = None

@@ -1487,6 +1487,9 @@ def _initial_derive(project_id, plan, video, generation, platforms, branding, sk
     chosen = selected_template(generation)
     html_ids = html_candidate_ids(base_drafts) if chosen else set()
     planned = []
+    # OP 候选采纳关卡：审阅流程（先看 AI 方案）下选段完成后不自动渲染，
+    # 全部候选落 on_demand，等用户在详情页逐条「生成这条」。
+    review_before_render = bool(generation.get('review_before_render'))
     for base in base_drafts:
         source_id = base['id']
         long_only = bool(base.get(LONG_ONLY_KEY))
@@ -1498,7 +1501,7 @@ def _initial_derive(project_id, plan, video, generation, platforms, branding, sk
             if not _eligible_for_platform(base, strategy):
                 continue
             value, trimmed = _fit_platform_limit(project_id, {**base, 'id': uuid.uuid4().hex, 'revision': 1}, strategy)
-            now = source_id in automatic[strategy_id]
+            now = (not review_before_render) and (source_id in automatic[strategy_id])
             use_html = bool(chosen) and now and strategy.aspect == 'portrait' and source_id in html_ids
             rank_fallback = bool(chosen) and now and strategy.aspect == 'portrait' and source_id not in html_ids
             framed = None  # on-demand versions are framed and packaged when the user asks (produce_variant)
@@ -2099,6 +2102,9 @@ def inspect_project(project_id, options, url=None, browser=None, *, producer=Non
             'branding': options.branding.model_dump(),
             'output_captions': load_output_captions().enabled,
             'auto_start': options.auto_start,
+            # OP 候选采纳关卡：「先看 AI 方案」流程标记——选段完成后全部候选
+            # 落 on_demand（不自动渲染），等用户在详情页逐条采纳生成
+            'review_before_render': bool(getattr(options, 'review_before_render', False)),
             'portrait_style': options.portrait_style,
             **({'html_template': options.html_template} if getattr(options, 'html_template', None) else {}),
             **({'recommended_template': options.recommended_template} if getattr(options, 'recommended_template', None) else {}),

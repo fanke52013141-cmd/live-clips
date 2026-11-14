@@ -235,6 +235,7 @@ async def import_visual(
     instruction: str = Form('', max_length=1000),
     platforms: list[str] = Form(['douyin']),
     auto_start: bool = Form(False),
+    review_before_render: bool = Form(False),
     portrait_style: Literal['auto', 'interview', 'podcast'] = Form('auto'),
     html_template: Optional[Literal['editorial', 'street', 'news', 'cinema', 'classic']] = Form(None),
     recommended_template: Optional[Literal['editorial', 'street', 'classic']] = Form(None),
@@ -292,7 +293,8 @@ async def import_visual(
             }
         prefs = ImportOptions(
             goal=goal, language=language, aspect=aspect, duration=duration, instruction=instruction,
-            platforms=platforms, auto_start=auto_start, portrait_style=portrait_style, html_template=html_template,
+            platforms=platforms, auto_start=auto_start, review_before_render=review_before_render,
+            portrait_style=portrait_style, html_template=html_template,
             recommended_template=recommended_template,
             branding={'outro_enabled': brand_outro_enabled},
             source_window=source_window,
