@@ -550,6 +550,61 @@ def _to_score(v: Any) -> Optional[float]:
     return round(f, 2)
 
 
+def three_gate_dedupe(items: Sequence[Dict[str, Any]], srt_entries: Sequence[Dict[str, Any]],
+                      *, max_overlap_ratio: float = 0.4, max_text_similarity: float = 0.7,
+                      max_segment_reuse: float = 0.4) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """三闸门查重（OP-5，机制来自 Clips Kitty）：时间重叠 / 文本相似 / 转写行复用。
+
+    按分数从高到低逐个入库，与已入库片段撞任一闸门的候选被拒绝——**每条拒绝
+    都带理由返回**，调用方落报告可审计，阈值全部可配。items 需要 id/start_time/
+    end_time/final_score；转写行由 srt_entries 反查。
+    """
+    if not items:
+        return [], []
+    from difflib import SequenceMatcher
+
+    rows: list[Tuple[float, float, str]] = [
+        (to_seconds(e.get('start_time')), to_seconds(e.get('end_time')), str(e.get('text') or '').strip())
+        for e in srt_entries
+    ]
+
+    def coverage(item: Dict[str, Any]) -> Tuple[float, float, str, list[int]]:
+        start, end = to_seconds(item.get('start_time')), to_seconds(item.get('end_time'))
+        covered = [i for i, (s, e, _) in enumerate(rows) if s < end and e > start]
+        text = ' '.join(rows[i][2] for i in covered)
+        return start, end, text, covered
+
+    enriched = sorted(
+        [dict(c) for c in items],
+        key=lambda c: float(c.get('final_score') or 0), reverse=True,
+    )
+    kept: list[Tuple[Dict[str, Any], Tuple[float, float, str, list[int]]]] = []
+    rejections: List[Dict[str, Any]] = []
+    for item in enriched:
+        start, end, text, covered = coverage(item)
+        duration = max(end - start, 1e-6)
+        rejected: Optional[Tuple[str, Dict[str, Any], float]] = None
+        for other, (o_start, o_end, o_text, o_covered) in kept:
+            shared = min(end, o_end) - max(start, o_start)
+            if shared / duration > max_overlap_ratio:
+                rejected = ('时间重叠', other, shared / duration)
+                break
+            if text and o_text and SequenceMatcher(None, text, o_text).ratio() > max_text_similarity:
+                rejected = ('文本相似', other, 0.0)
+                break
+            reused = len(set(covered) & set(o_covered)) / max(len(covered), 1)
+            if reused > max_segment_reuse:
+                rejected = ('转写行复用', other, reused)
+                break
+        if rejected:
+            gate, against, value = rejected
+            rejections.append({'id': item.get('id'), 'against': against.get('id'), 'gate': gate,
+                               'value': round(value, 3), 'score': item.get('final_score')})
+            continue
+        kept.append((item, (start, end, text, covered)))
+    return [item for item, _ in kept], rejections
+
+
 def select_clips(scored: Sequence[Dict[str, Any]], threshold: float,
                  profile: Optional[DurationProfile] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """

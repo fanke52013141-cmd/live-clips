@@ -49,6 +49,9 @@ pysrt==1.1.2
 psutil==7.2.2
 pytz==2026.3.post1
 
+# LLM 输出 json_repair 模糊兜底（utils/llm_client.py / utils/llm_json.py，OP-2）
+json-repair==0.64.9
+
 # --- LLM provider SDKs ---
 # Required for the AI clipping pipeline. These used to live only in
 # a separate, unpinned SDK installer, so the portable desktop

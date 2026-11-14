@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from .video_processor import VideoProcessor
 from .subtitle_processor import SubtitleProcessor
-from .ffmpeg_utils import get_ffmpeg_path, get_ffprobe_path
+from .ffmpeg_utils import get_ffmpeg_path, get_ffprobe_path, stderr_tail
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +170,8 @@ class VideoEditor:
             duration = end_time - start_time
             
             ffmpeg_bin = get_ffmpeg_path()
+            # 流复制 + 输入端 seek 时禁用 `-avoid_negative_ts make_zero`：
+            # 实测（FFmpeg 8.1）该组合会把 mp4 容器时长错位（请求 4s 实得 6s）
             cmd = [
                 ffmpeg_bin,
                 '-ss', str(start_time),
@@ -177,7 +179,6 @@ class VideoEditor:
                 '-t', str(duration),
                 '-c:v', 'copy',
                 '-c:a', 'copy',
-                '-avoid_negative_ts', 'make_zero',
                 '-y',
                 str(output_path)
             ]
@@ -188,7 +189,9 @@ class VideoEditor:
                 logger.info(f"成功提取视频片段: {start_time:.2f}s - {end_time:.2f}s")
                 return True
             else:
-                logger.error(f"提取视频片段失败: {result.stderr}")
+                # 255 是被信号中断（用户取消）的正常码，不算渲染失败
+                level = logging.WARNING if result.returncode == 255 else logging.ERROR
+                logger.log(level, f"提取视频片段失败(rc={result.returncode}): {stderr_tail(result.stderr)}")
                 return False
                 
         except Exception as e:
@@ -253,7 +256,9 @@ class VideoEditor:
                     logger.info(f"成功拼接 {len(segment_files)} 个视频片段")
                     return True
                 else:
-                    logger.error(f"拼接视频片段失败: {result.stderr}")
+                    # 255 是被信号中断（用户取消）的正常码，不算渲染失败
+                    level = logging.WARNING if result.returncode == 255 else logging.ERROR
+                    logger.log(level, f"拼接视频片段失败(rc={result.returncode}): {stderr_tail(result.stderr)}")
                     return False
                     
         except Exception as e:

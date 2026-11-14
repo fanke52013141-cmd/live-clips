@@ -20,11 +20,13 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
 
-from .quality import DurationProfile, profile_from_srt, refine_timeline, save_profile, save_report, select_clips, to_seconds, to_srt_time
+from .quality import DurationProfile, profile_from_srt, refine_timeline, save_profile, save_report, select_clips, three_gate_dedupe, to_seconds, to_srt_time
+from .recall import recalled_spans
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +93,8 @@ PROMPT = (
     '{long_rule}'
     '数量：这段字幕里挑 {count_lo}–{count_hi} 个，宁缺毋滥，片段之间不要重叠。\n'
     '每个片段给出：start / end（起止行号，含 end 行）、title（无论原文是什么语言都用中文写爆款标题，≤20 字，忠于原文、不夸张不编造）、'
-    'reason（中文推荐理由，15–30 字，点出最核心的亮点）、score（0.0–1.0，综合爆款潜力，0.7 以上才算值得发）。\n'
+    'reason（中文推荐理由，15–30 字，点出最核心的亮点）、'
+    'score（0.0–1.0，综合爆款潜力。评分要苛刻：多数片段应低于 0.7，只有真正强的才给 0.85 以上；0.7 以上才算值得发）。\n'
     '只返回 JSON：{{"clips":[{{"start":0,"end":0,"title":"...","reason":"...","score":0.0}}]}}'
 )
 
@@ -181,12 +184,36 @@ def _platform_rule(platform_min_sec: float | None, platform_min_label: str) -> s
     )
 
 
+def _input_token_budget() -> int | None:
+    """单任务输入 token 预算（OP-4 预算护栏）。
+
+    设置页 `max_llm_input_tokens` 优先，其次环境变量 AUTOCLIP_MAX_LLM_INPUT_TOKENS，
+    都没设=不限。预算按提交前的字幕字符数估算（llm_usage 的 1.5 字符/token 口径），
+    超预算在调用 LLM 之前直接失败，不让一个超长视频烧穿额度。
+    """
+    try:
+        from backend.core.llm_manager import get_llm_manager
+        value = get_llm_manager().get_processing_setting('max_llm_input_tokens')
+        if value is not None:
+            return max(0, int(value))
+    except Exception as error:  # noqa: BLE001 - 设置不可读时退到环境变量
+        logger.debug('读取 max_llm_input_tokens 设置失败: %s', error)
+    env = os.getenv('AUTOCLIP_MAX_LLM_INPUT_TOKENS')
+    try:
+        return max(0, int(env)) if env else None
+    except ValueError:
+        return None
+
+
 def find_clips(srt_entries: list[dict[str, Any]], call, *, threshold: float, metadata_dir: Path | None = None,
                window: WindowSize | None = None, platform_min_sec: float | None = None,
-               platform_min_label: str = '') -> list[dict[str, Any]]:
+               platform_min_label: str = '', danmaku_events: list | None = None) -> list[dict[str, Any]]:
     """Titled clips (legacy `step4_titles.json` shape) from one pass over the transcript.
 
-    `window` defaults to `window_size()` (smaller windows for local models)."""
+    `window` defaults to `window_size()` (smaller windows for local models).
+    `danmaku_events`（OP-4）提供弹幕等互动事件时先做信号召回，LLM 只精读候选区间的
+    字幕行；信号稀疏自动回退全量路径，行为与不传时一致。
+    """
     from .concurrency import map_chunks
     rows = [{'start': to_seconds(e['start_time']), 'end': to_seconds(e['end_time']), 'text': str(e.get('text') or '').strip()}
             for e in srt_entries if str(e.get('text') or '').strip()]
@@ -196,6 +223,18 @@ def find_clips(srt_entries: list[dict[str, Any]], call, *, threshold: float, met
     total = max(rows[-1]['end'] - rows[0]['start'], 1.0)
     window = window or window_size()
     spans = windows(rows, window)
+    recalled = False
+    if danmaku_events:
+        try:
+            from ..utils.danmaku_parser import events_per_second
+            candidate = recalled_spans(rows, duration_sec=total,
+                                       danmaku_per_second=events_per_second(danmaku_events))
+        except Exception as error:  # noqa: BLE001 - 召回失败绝不阻断全量路径
+            logger.warning('召回层失败，回退全量路径: %s', error)
+            candidate = None
+        if candidate:
+            spans = candidate
+            recalled = True
 
     def one(span):
         first, last = span
@@ -213,6 +252,18 @@ def find_clips(srt_entries: list[dict[str, Any]], call, *, threshold: float, met
                 payload = {**payload, 'previous_error': f'上一次返回不合格：{error}。请严格按格式重新返回。'}
         return None
 
+    # 预算护栏（OP-4）：只统计即将真正提交的行，召回生效时预估随候选区间同步缩小
+    budget = _input_token_budget()
+    if budget:
+        submitted_chars = sum(len(rows[i]['text']) for first, last in spans for i in range(first, last + 1))
+        from ..core import llm_usage
+        estimate = llm_usage._estimate(submitted_chars)
+        if estimate > budget:
+            raise ClipFinderError(
+                f'字幕输入约 {estimate} tokens，超过单任务预算 {budget}'
+                '（设置页「max_llm_input_tokens」或环境变量 AUTOCLIP_MAX_LLM_INPUT_TOKENS）。'
+                '可提高预算、接入弹幕启用召回层缩小输入，或改用本地模型。')
+
     results = map_chunks(one, spans)
     if all(r is None for r in results):
         raise ClipFinderError('模型没有返回可用的片段')
@@ -225,12 +276,14 @@ def find_clips(srt_entries: list[dict[str, Any]], call, *, threshold: float, met
                       'chunk_index': 0, 'final_score': clip['score'], 'recommend_reason': clip['reason'],
                       'generated_title': clip['title'], 'score_source': 'llm'})
     refined, report = refine_timeline(items, srt_entries, profile)
+    refined, rejections = three_gate_dedupe(refined, srt_entries)  # OP-5：时间重叠/文本相似/转写复用，拒绝带理由
     chosen, selection = select_clips(refined, threshold, profile)
     if metadata_dir is not None:
         metadata_dir = Path(metadata_dir)
         save_profile(profile, metadata_dir)
         save_report({'clip_finder': {'windows': len(spans), 'window': window.kind, 'failed_windows': sum(r is None for r in results),
-                                     'picked': len(picked), 'refine': report, 'selection': selection}}, metadata_dir)
+                                     'recalled': recalled, 'picked': len(picked), 'refine': report, 'selection': selection,
+                                     'dedupe_rejections': rejections}}, metadata_dir)
         for name, data in (('step3_all_scored.json', refined), ('step4_titles.json', chosen)):
             (metadata_dir / name).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     if not chosen:

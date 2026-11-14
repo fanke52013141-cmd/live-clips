@@ -362,6 +362,36 @@ class SimplePipelineAdapter:
             f"没有可用的 LLM 提供商（当前选择：{name} · {model}），缺少 API Key 或本地服务地址。",
         )
 
+    def _project_source_url(self) -> str | None:
+        """项目的来源链接（存在 project_metadata['source_url']）；无链接返回 None。"""
+        from backend.core.database import SessionLocal
+        from backend.models.project import Project
+        try:
+            db = SessionLocal()
+            try:
+                row = db.query(Project).filter(Project.id == self.project_id).first()
+                if row is None or not getattr(row, 'project_metadata', None):
+                    return None
+                return row.project_metadata.get('source_url') or None
+            finally:
+                db.close()
+        except Exception:  # noqa: BLE001 - 取不到来源链接就跳过弹幕召回
+            return None
+
+    def _danmaku_events_for(self, entries: list[dict]) -> list | None:
+        """OP-4：B 站链接 → 弹幕事件流（召回层的真实数据源）。失败返回 None 回退全量。"""
+        try:
+            from backend.utils.bilibili_danmaku import fetch_events_for_url
+            from backend.pipeline.quality import to_seconds
+            source_url = self._project_source_url()
+            if not source_url:
+                return None
+            max_time = to_seconds(entries[-1]['end_time']) if entries else None
+            return fetch_events_for_url(source_url, max_time=max_time)
+        except Exception as error:  # noqa: BLE001 - 弹幕抓取失败不影响选段主流程
+            logger.debug('danmaku recall skipped: %s', type(error).__name__)
+            return None
+
     def _find_clips_in_one_pass(self, srt_path: Path, metadata_dir: Path, platform_min_sec=None, platform_min_label=''):
         """Titled clips from one model pass over the whole transcript, or None to use the legacy steps."""
         from backend.pipeline.clip_finder import find_clips
@@ -372,9 +402,11 @@ class SimplePipelineAdapter:
         emit_progress(self.project_id, "ANALYZE", "正在通读全文挑选片段")
         try:
             entries = TextProcessor.parse_srt(Path(srt_path))
+            danmaku_events = self._danmaku_events_for(entries)
             with llm_usage.timed("clip_finder"):
                 return find_clips(entries, text_json, threshold=resolve_min_score_threshold(), metadata_dir=metadata_dir,
-                                  platform_min_sec=platform_min_sec, platform_min_label=platform_min_label)
+                                  platform_min_sec=platform_min_sec, platform_min_label=platform_min_label,
+                                  danmaku_events=danmaku_events)
         except ProjectDeleted:
             raise
         except Exception as error:  # noqa: BLE001 - the legacy steps still work with any model
@@ -479,24 +511,41 @@ class SimplePipelineAdapter:
             else:
                 from backend.utils.speech_recognizer import SpeechRecognitionError
                 from backend.services.cloud_transcription import CloudTranscriptionError
-                logger.warning("没有SRT文件，尝试自动生成字幕")
+                # OP-3.2 字幕预取：下载期间后台已用音频小流转出的字幕先收货，
+                # 没有预取 / 预取失败 / 等待超时（含预取进程消失）都回退整段转写。
                 try:
-                    with llm_usage.timed("transcribe"):
-                        srt_path = await self._generate_subtitle_automatically(input_video_path, metadata_dir)
-                except CloudTranscriptionError as e:
-                    raise cloud_transcription_failure(e) from e
-                except SpeechRecognitionError as e:
-                    raise failure_from_speech_error(str(e)) from e
-                if not (srt_path and srt_path.exists()):
-                    # 以前这里写一个空大纲然后一路「成功」到底，用户看到的是 Completed · 0 切片
-                    raise missing_subtitle_failure()
-                logger.info(f"自动生成字幕成功: {srt_path}")
-                # Stamp source fingerprint as soon as transcription is accepted.
-                # P1 #6: mark ASR origin so 「从头重做」 can safely delete only Whisper/cloud SRT.
-                pipeline_resume.write_stamp(
-                    metadata_dir, video=video_path, prompt_files=prompt_files,
-                    extra={'srt_origin': 'asr'},
-                )
+                    from backend.services import subtitle_prefetch
+                    prefetch_srt = subtitle_prefetch.wait_for_prefetch(video_path.parent)
+                except Exception as error:  # noqa: BLE001 - 预取等待绝不阻断主流程
+                    logger.warning('字幕预取等待异常，回退普通转写: %s', type(error).__name__)
+                    prefetch_srt = None
+                if prefetch_srt is not None and prefetch_srt.is_file():
+                    logger.info(f"R3: 消费字幕预取结果: {prefetch_srt}")
+                    srt_path = prefetch_srt
+                    emit_progress(self.project_id, "SUBTITLE", "AI字幕生成完成", subpercent=TRANSCRIBE_DONE_SUBPERCENT)
+                    pipeline_resume.write_stamp(
+                        metadata_dir, video=video_path, prompt_files=prompt_files,
+                        extra={'srt_origin': 'asr'},
+                    )
+                else:
+                    logger.warning("没有SRT文件，尝试自动生成字幕")
+                    try:
+                        with llm_usage.timed("transcribe"):
+                            srt_path = await self._generate_subtitle_automatically(input_video_path, metadata_dir)
+                    except CloudTranscriptionError as e:
+                        raise cloud_transcription_failure(e) from e
+                    except SpeechRecognitionError as e:
+                        raise failure_from_speech_error(str(e)) from e
+                    if not (srt_path and srt_path.exists()):
+                        # 以前这里写一个空大纲然后一路「成功」到底，用户看到的是 Completed · 0 切片
+                        raise missing_subtitle_failure()
+                    logger.info(f"自动生成字幕成功: {srt_path}")
+                    # Stamp source fingerprint as soon as transcription is accepted.
+                    # P1 #6: mark ASR origin so 「从头重做」 can safely delete only Whisper/cloud SRT.
+                    pipeline_resume.write_stamp(
+                        metadata_dir, video=video_path, prompt_files=prompt_files,
+                        extra={'srt_origin': 'asr'},
+                    )
 
             # T2: existing / platform SRT still needs the source_window filter (ASR path already applied it).
             window = _plan_source_window(self.project_id)

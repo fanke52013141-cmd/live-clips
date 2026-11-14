@@ -69,6 +69,27 @@ def bundled_candidates(base: str, executable: str | None = None, platform_name: 
     return found
 
 
+# ffmpeg 退出码白名单：0 正常结束；255 是被信号中断（用户取消、优雅退出、Ctrl+C）时
+# ffmpeg 的正常返回码——不是失败。把 255 当失败会误报"渲染失败"并触发不必要的重试。
+FFMPEG_SAFE_RETURN_CODES = frozenset({0, 255})
+
+# 诊断日志只保留 stderr 尾部：长任务（几小时的录播转写/渲染）的 stderr 可达数百 MB，
+# 全量写入日志会把内存和日志文件撑爆；出错的关键信息几乎总在末尾几 KB。
+STDERR_TAIL_BYTES = 65536
+
+
+def is_safe_returncode(code: int | None) -> bool:
+    """True 当退出码属于正常集合（0，或被信号中断的 255）。"""
+    return code in FFMPEG_SAFE_RETURN_CODES
+
+
+def stderr_tail(stderr: str | None, limit: int = STDERR_TAIL_BYTES) -> str:
+    """只保留 stderr 的尾部 limit 个字符，用于日志与错误提示。"""
+    if not stderr:
+        return ""
+    return stderr if len(stderr) <= limit else f"…（前段已截断）{stderr[-limit:]}"
+
+
 def missing_ffmpeg_message(name: str = "ffmpeg") -> str:
     env = f"AUTOCLIP_{name.upper()}_PATH / {name.upper()}_PATH"
     return (

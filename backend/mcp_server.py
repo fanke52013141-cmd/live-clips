@@ -181,9 +181,21 @@ def _run_job(req: RunRequest, override: LLMOverride, link: bool) -> Dict[str, An
 
 def _make_request(video_path: str, srt_path: Optional[str], name: Optional[str], category: str,
                   min_score: Optional[float]) -> RunRequest:
+    # 路径校验（OP-6.1）：LLM 客户端传错路径时给一句可执行的报错，
+    # 而不是等流水线跑到一半才发现文件不存在。
+    video = Path(video_path).expanduser()
+    if not video.is_absolute():
+        video = Path.cwd() / video
+    if not video.exists():
+        raise ValueError(f"video_path 不存在: {video}。请传入本地视频文件的绝对路径。")
+    if not video.is_file():
+        raise ValueError(f"video_path 不是文件: {video}。请传入视频文件的绝对路径。")
+    srt = Path(srt_path).expanduser() if srt_path else None
+    if srt is not None and not srt.exists():
+        raise ValueError(f"srt_path 不存在: {srt}。省略该参数可让流水线自动转写。")
     return RunRequest(
-        video=Path(video_path),
-        srt=Path(srt_path) if srt_path else None,
+        video=video,
+        srt=srt,
         name=name,
         category=category or "default",
         min_score=min_score,

@@ -145,6 +145,28 @@ class LLMClient:
         
         return True
     
+    def _json_repair_fallback(self, json_str: str) -> Any:
+        """最后一层兜底：json_repair 模糊解析。
+
+        正则修复（fix_common_json_errors）只覆盖已知模式；json_repair 能修
+        尾逗号、缺引号、Python 风格 None/True、截断、中文引号嵌套等更多畸形。
+        只接受 dict/list 结果——纯文本垃圾被修成字符串时仍视为解析失败，
+        保持既有 ModelResponseInvalid 语义不变。
+        """
+        try:
+            import json_repair
+        except ImportError:
+            return None
+        try:
+            repaired = json_repair.loads(json_str)
+        except Exception as e:  # noqa: BLE001 - 兜底层绝不抛新异常类型
+            logger.warning("json_repair 兜底解析失败: %s", sanitize_exception_text(e))
+            return None
+        if not isinstance(repaired, (dict, list)):
+            return None
+        logger.info("json_repair 兜底解析成功，已恢复结构化输出")
+        return repaired
+
     def parse_json_response(self, response: str) -> Any:
         """
         从可能包含Markdown格式的文本中解析JSON对象。
@@ -254,10 +276,14 @@ class LLMClient:
                         return json.loads(fixed_json)
                     except json.JSONDecodeError as final_e:
                         logger.error("最终尝试解析失败: %s length=%s", sanitize_exception_text(final_e), len(response))
+                        # 5. json_repair 模糊解析兜底（OP-2）
+                        repaired = self._json_repair_fallback(json_str)
+                        if repaired is not None:
+                            return repaired
                         # the model answered (200) with content that is not JSON: a model failure.
                         raise ModelResponseInvalid(f"无法从响应中解析出有效的JSON length={len(response)}") from None
             
-            # 如果连通用正则都找不到，就彻底失败
+            # 如果连通用正则都找不到，就彻底失败（json_repair 对无结构的纯文本无能为力）
             raise ModelResponseInvalid(f"无法从响应中解析出有效的JSON length={len(response)}") from None
     
     def get_current_provider_info(self) -> Dict[str, Any]:

@@ -152,6 +152,10 @@ class BilibiliDownloader:
         # 设置下载选项 - 改进字幕下载策略
         ydl_opts = {
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            # 同画质优先 H.264/avc1：B 站 bestvideo[ext=mp4] 常给 HEVC，应用内
+            # WebView2 缺系统 HEVC 解码器时黑屏，且 H.264 后续解码/重编码更快。
+            # format_sort 只在画质相同时生效，不会用低分辨率 avc1 换掉高分辨率 HEVC。
+            'format_sort': ['vcodec:avc1'],
             'merge_output_format': 'mp4',
             **ytdlp_ffmpeg_options(),
             'writesubtitles': True,
@@ -336,6 +340,9 @@ class BilibiliDownloader:
     
     def _download_sync(self, url: str, ydl_opts: Dict[str, Any]):
         """同步方式下载"""
+        # 磁盘熔断（OP-6.5）：长视频下载动辄几 GB，写满盘会损坏半截文件
+        from .disk_guard import ensure_disk_space
+        ensure_disk_space(self.download_dir)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     

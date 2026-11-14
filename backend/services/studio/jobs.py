@@ -480,6 +480,13 @@ def download(project_id, url, browser, import_options=None):
     options = {'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]', 'outtmpl': str(folder / 'input.%(ext)s'), 'merge_output_format': 'mp4', 'noplaylist': True, 'quiet': True, 'ffmpeg_location': get_ffmpeg_path(), 'socket_timeout': 30, 'retries': 2, 'progress_hooks': [progress], 'postprocessor_hooks': [progress], **ytdlp_js_runtimes()}
     if browser:
         options['cookiesfrombrowser'] = (browser,)
+    # OP-3.2 字幕预取：灰度开启时，视频下载期间后台同步用音频小流转字幕，
+    # 完成即被 R3 断点免费消费；失败/关闭时完全走原路径（services/subtitle_prefetch.py）。
+    try:
+        from backend.services import subtitle_prefetch
+        subtitle_prefetch.maybe_start(project_id, folder, url, browser)
+    except Exception:  # noqa: BLE001 - 预取启动失败不阻断下载
+        logger.debug('subtitle prefetch start skipped', exc_info=True)
     from backend.utils.download_recovery import download_with_recovery
     download_with_recovery(url, {**options, 'writeinfojson': True})
     # Public listing text only: packaging checks nameplate names against it instead of guessing.

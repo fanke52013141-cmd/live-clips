@@ -7,7 +7,8 @@ import logging
 import re
 from typing import List, Dict, Optional
 from pathlib import Path
-from .ffmpeg_utils import get_ffmpeg_path, get_ffprobe_path
+from .ffmpeg_utils import get_ffprobe_path, get_ffmpeg_path, is_safe_returncode, stderr_tail
+from .disk_guard import ensure_disk_space
 
 # 修复导入问题
 try:
@@ -139,6 +140,11 @@ class VideoProcessor:
         WebView2 / macOS WKWebView 没有系统 HEVC 解码器时画面是黑的，声音可能还在。
         流复制还会留下非零 start time 的 edit list，Chromium 系播放器同样黑屏。
         合集导出已经转成 H.264；单条切片以前没有。
+
+        `-fps_mode cfr` 把可变帧率源（直播平台下载源常见）压成恒定帧率，配合
+        `aresample=async=1` 防止时长相对音频漂移导致音画不同步；
+        `+negative_cts_offsets` 修复 B 帧/AAC priming 造成的首帧黑帧
+        （部分播放器与上传通道忽略 edit list，首帧显示时间会滞后 10-20ms）。
         """
         return [
             ffmpeg_bin,
@@ -151,16 +157,107 @@ class VideoProcessor:
             "-preset", "veryfast",
             "-crf", "23",
             "-pix_fmt", "yuv420p",
+            "-fps_mode", "cfr",
+            "-af", "aresample=async=1:first_pts=0",
             "-c:a", "aac",
             "-b:a", "128k",
-            "-movflags", "+faststart",
+            "-movflags", "+faststart+negative_cts_offsets",
             "-avoid_negative_ts", "make_zero",
             "-y",
             str(output_path),
         ]
 
     @staticmethod
-    def extract_clip(input_video: Path, output_path: Path, 
+    def build_draft_extract_command(
+        ffmpeg_bin: str,
+        input_video: Path,
+        output_path: Path,
+        start_time: str,
+        duration: float,
+        *,
+        reencode: bool,
+    ) -> List[str]:
+        """预览草稿档（OP-3.1）：预览确认用，成片一律走 build_extract_clip_command 精渲染。
+
+        reencode=False：源已是浏览器可播的 H.264/AAC，流复制秒级出片；切点吸附
+        关键帧最多偏几秒，是流复制的固有代价，只接受于预览场景。
+        reencode=True：HEVC/AV1 等浏览器不支持的源回退 ultrafast 重编码——宁可慢，
+        也不能产出应用内黑屏的"预览"（兼容性说明见 build_extract_clip_command）。
+        """
+        if reencode:
+            return [
+                ffmpeg_bin,
+                "-ss", start_time,
+                "-i", str(input_video),
+                "-t", f"{duration:.3f}",
+                "-map", "0:v:0",
+                "-map", "0:a:0?",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "28",
+                "-pix_fmt", "yuv420p",
+                "-fps_mode", "cfr",
+                "-af", "aresample=async=1:first_pts=0",
+                "-c:a", "aac",
+                "-b:a", "96k",
+                "-movflags", "+faststart+negative_cts_offsets",
+                "-avoid_negative_ts", "make_zero",
+                "-y",
+                str(output_path),
+            ]
+        # 流复制路径实测（FFmpeg 8.1）：`-avoid_negative_ts make_zero` 与输入端 seek
+        # 组合会把 mp4 容器时长错位（请求 4s 实得 6s），故 copy 分支不加该参数；
+        # 首帧黑帧防护由 `+negative_cts_offsets` 承担。
+        return [
+            ffmpeg_bin,
+            "-ss", start_time,
+            "-i", str(input_video),
+            "-t", f"{duration:.3f}",
+            "-map", "0:v:0",
+            "-map", "0:a:0?",
+            "-c", "copy",
+            "-movflags", "+faststart+negative_cts_offsets",
+            "-y",
+            str(output_path),
+        ]
+
+    @staticmethod
+    def extract_clip_draft(input_video: Path, output_path: Path,
+                           start_time: str, end_time: str) -> bool:
+        """草稿档切片：探测源编码后自动选择流复制或轻量重编码。
+
+        仅用于预览/草稿；终稿必须走 extract_clip（完整兼容性重编码）。
+        """
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            ffmpeg_start = VideoProcessor.convert_srt_time_to_ffmpeg_time(start_time)
+            ffmpeg_end = VideoProcessor.convert_srt_time_to_ffmpeg_time(end_time)
+            duration = (VideoProcessor.convert_ffmpeg_time_to_seconds(ffmpeg_end)
+                        - VideoProcessor.convert_ffmpeg_time_to_seconds(ffmpeg_start))
+            if duration <= 0:
+                logger.error(f"草稿切片时长非法: {duration:.2f}秒 ({start_time} -> {end_time})")
+                return False
+            info = VideoProcessor.get_video_info(input_video)
+            codecs = {s.get('codec_name') for s in info.get('streams', [])}
+            # 只有源本身就是浏览器可播的 H.264（音频至多 AAC/MP3）才允许流复制
+            reencode = 'h264' not in codecs or bool(codecs & {'hevc', 'av1', 'vp9'})
+            ffmpeg_bin = get_ffmpeg_path()
+            cmd = VideoProcessor.build_draft_extract_command(
+                ffmpeg_bin, input_video, output_path, ffmpeg_start, duration, reencode=reencode,
+            )
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
+            if is_safe_returncode(result.returncode) and output_path.exists():
+                mode = '重编码' if reencode else '流复制'
+                logger.info(f"草稿切片完成({mode}): {output_path} ({duration:.2f}秒)")
+                return True
+            logger.error(f"草稿切片失败: {stderr_tail(result.stderr)}")
+            return False
+        except Exception as e:
+            logger.error(f"草稿切片异常: {str(e)}")
+            return False
+
+    @staticmethod
+    def extract_clip(input_video: Path, output_path: Path,
                     start_time: str, end_time: str) -> bool:
         """
         从视频中提取指定时间段的片段
@@ -255,44 +352,103 @@ class VideoProcessor:
                 logger.error("concat文件为空，无法创建合集")
                 concat_file.unlink(missing_ok=True)
                 return False
-            
-            # 构建FFmpeg命令 - 使用H.264编码确保兼容性
+
+            # 磁盘熔断（OP-6.5）：合集输出可能有几 GB，写满盘会让文件损坏
+            ensure_disk_space(output_path.parent)
+
+            # 先探测所有输入的编码参数：本流水线产出的切片都是同参数 H.264/AAC，
+            # 走 concat demuxer 流复制秒级完成且无二次编码的质量损失；
+            # 混入异参数外部视频时流复制会产出坏文件（还不一定报错），
+            # 此时回退到重编码路径。
             ffmpeg_bin = get_ffmpeg_path()
-            cmd = [
-                ffmpeg_bin,
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', str(concat_file),
-                '-c:v', 'libx264',  # 使用H.264视频编码
-                '-preset', 'ultrafast',  # 使用最快的编码预设
-                '-crf', '28',  # 稍微降低质量以加快编码速度
-                '-c:a', 'aac',  # 使用AAC音频编码
-                '-b:a', '128k',  # 音频比特率
-                '-movflags', '+faststart',  # 优化网络播放
-                '-y',
-                str(output_path)
-            ]
-            
+            cmd: List[str]
+            if VideoProcessor._streams_uniform_for_copy(valid_clips):
+                cmd = [
+                    ffmpeg_bin,
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', str(concat_file),
+                    '-c', 'copy',
+                    '-movflags', '+faststart+negative_cts_offsets',
+                    '-y',
+                    str(output_path),
+                ]
+                logger.info("合集输入编码一致，使用流复制快速拼接")
+            else:
+                # 构建FFmpeg命令 - 使用H.264编码确保兼容性
+                cmd = [
+                    ffmpeg_bin,
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', str(concat_file),
+                    '-c:v', 'libx264',  # 使用H.264视频编码
+                    '-preset', 'ultrafast',  # 使用最快的编码预设
+                    '-crf', '28',  # 稍微降低质量以加快编码速度
+                    '-c:a', 'aac',  # 使用AAC音频编码
+                    '-b:a', '128k',  # 音频比特率
+                    '-movflags', '+faststart+negative_cts_offsets',  # 优化网络播放并防首帧黑帧
+                    '-y',
+                    str(output_path)
+                ]
+
             logger.info(f"执行FFmpeg命令: {' '.join(cmd)}")
-            
+
             # 执行命令
             result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
-            
+
             # 清理临时文件
             concat_file.unlink(missing_ok=True)
-            
-            if result.returncode == 0:
+
+            if is_safe_returncode(result.returncode) and output_path.exists():
                 logger.info(f"成功创建合集: {output_path}")
                 return True
             else:
-                logger.error(f"创建合集失败: {result.stderr}")
-                logger.error(f"FFmpeg stdout: {result.stdout}")
+                logger.error(f"创建合集失败: {stderr_tail(result.stderr)}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"视频拼接异常: {str(e)}")
             return False
-    
+
+    @staticmethod
+    def _streams_uniform_for_copy(clips: List[Path]) -> bool:
+        """所有输入的视频/音频编码参数一致时才允许流复制拼接。
+
+        ffprobe 比较视频编码、分辨率与音频编码；任一探测失败按"不一致"处理，
+        宁可回退到重编码也不产出坏文件。
+        """
+        ffprobe_bin = get_ffprobe_path()
+        signature: Optional[tuple] = None
+        for clip in clips:
+            try:
+                probe = subprocess.run(
+                    [ffprobe_bin, '-v', 'quiet', '-print_format', 'json',
+                     '-show_streams', str(clip)],
+                    capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30,
+                )
+                if probe.returncode != 0:
+                    return False
+                streams = json.loads(probe.stdout or '{}').get('streams', [])
+                video = next((s for s in streams if s.get('codec_type') == 'video'), None)
+                audio = next((s for s in streams if s.get('codec_type') == 'audio'), None)
+                if video is None:
+                    return False
+                sig = (
+                    video.get('codec_name'),
+                    video.get('width'),
+                    video.get('height'),
+                    video.get('r_frame_rate'),
+                    audio.get('codec_name') if audio else None,
+                    audio.get('sample_rate') if audio else None,
+                )
+                if signature is None:
+                    signature = sig
+                elif sig != signature:
+                    return False
+            except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError):
+                return False
+        return signature is not None
+
     @staticmethod
     def extract_thumbnail(video_path: Path, output_path: Path, time_offset: int = 5) -> bool:
         """
@@ -310,21 +466,22 @@ class VideoProcessor:
             # 确保输出目录存在
             output_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # 构建FFmpeg命令
+            # 构建FFmpeg命令：-ss 放在 -i 之前做输入端寻址，长视频抽帧从分钟级降到秒级
+            ffmpeg_bin = get_ffmpeg_path()
             cmd = [
-                'ffmpeg',
-                '-i', str(video_path),
+                ffmpeg_bin,
                 '-ss', str(time_offset),
+                '-i', str(video_path),
                 '-vframes', '1',
                 '-q:v', '2',  # 高质量
                 '-y',  # 覆盖输出文件
                 str(output_path)
             ]
-            
+
             # 执行命令
             result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
-            
-            if result.returncode == 0 and output_path.exists():
+
+            if is_safe_returncode(result.returncode) and output_path.exists():
                 logger.info(f"成功提取缩略图: {output_path}")
                 return True
             else:
