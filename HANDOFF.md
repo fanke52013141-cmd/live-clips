@@ -1,12 +1,87 @@
 # AutoClip — 项目状态 / 进度 / 计划
 
+> 更新：2026-11-14（第六轮：审阅入口恢复 + 环境就绪）。**负责人指出的「采纳/不采纳审阅页」已找回**：网页端导入原本写死 `auto_start=true`（一键成片跳过 ImportReview 审阅页），现改为**双入口**——首页「生成成片」（一键直出，auto_start=true）+「先看 AI 方案」（新增次按钮，auto_start=false → 走 ImportReview「确认要做什么」审阅页，确认后再制作），贯彻 02 文档「AI 出初稿、人做终审」理念；`vite build` 通过。**环境已就绪**：Redis 8.10.3（redis-windows 构建，装于 D:\Program Files (x86)\redis8——Redis 5.0 不支持 kombu `ZADD GT` 脚本语法故弃用；Memurai winget 安装 1603 失败）+ Celery worker（--pool=solo，5 队列注册，inspect ping OK）+ 后端带 `AUTOCLIP_SEGMENTED_IMPORT=1` 重启。**待负责人**：设置页填模型 API Key → 首页贴 B 站链接 → 选「先看 AI 方案」体验审阅流程或直接「生成成片」，同时验证弹幕召回/字幕预取/快拼的证据（后端日志 /tmp/autoclip-backend.log、/tmp/celery-worker.log）。
+> 更新：2026-11-14（第五轮：UI 收尾）。**第一梯队三项完成**：① 审阅工作台走查——发现 legacy dark 块强制黑表格（`.ant-table` 等 `!important`），在 Calm Premium 覆盖区追加表格/分页/tabs/modal 的浅色覆盖（白底、1px 行分隔、紫 ink bar），真实渲染验证通过；② 新建 `src/ui/FloatingAnchorNav.tsx`（Krepling 特色右侧浮动锚点导航：竖排 pill、滚动 scroll-spy 高亮浅紫底、平滑跳转、无左侧指示点），接入项目详情页（概览/剪辑与成片，仅内容完成时显示）；③ 深色模式走查——详情/首页暗色对比良好，切换瞬间截图的按钮色差为渲染中间态（computed 实测 #ECEAE6 正确），非 bug。`vite build` 通过（6.99s）。**运行状态**：后端 uvicorn :8000 + 前端 vite :3000 已在后台运行；Redis 未装，任务队列不可用（浏览正常）。
+> 更新：2026-11-14（第四轮：UI 落地启动）。**Krepling 设计系统已落进真实前端**：`src/index.css` 的 `--ac-*` token 层整体切换（accent 蓝→紫 `#8B5CF6`、圆角 20/12px、暖白 `#FAFAF8` 底、粉紫渐变变量、Inter 字体），`main.tsx` AntD ConfigProvider 同步——**全站组件一次性换肤**（确认全库无残留硬编码蓝）。Header 改 72px 编辑感导航（黑圆 logo + Inter 粗体 wordmark + 黑 pill 设置按钮），首页 `.ac-creative-import` 升级 Display 标题（clamp 30-44px/-0.02em）+ 1080px 内容列 + 导入卡 3px 渐变顶条。浏览器实测：首页/项目详情/设置页全部符合新设计系统、无左侧色条；`vite build` 通过（7.27s）。
+> 更新：2026-11-14（测试轮）。**优化包详细测试完成**：真机集成（真实 FFmpeg 8.1）13/13 通过、单元测试 69/69 通过、B 站弹幕真机联网全链路打通（实抓 380 条、召回压缩到 23%）、全量回归零新增。**发现并修复 1 个真机 Bug**：`-avoid_negative_ts make_zero` 在 `-c copy`+输入端 seek 下导致 mp4 容器时长错位（请求 4s 实得 6s），已统一从全部流复制路径移除（含上游遗留的 `video_editor._extract_single_segment`，可回馈 upstream）。详见 [12-优化包测试报告](docs/12-优化包测试报告.md)；真机集成脚本 `scripts/verify_optimizations_integration.py` 可重复运行（建议挂 CI）。
+> 更新：2026-11-14（第三轮修订）。**负责人确认风格可行，并提出硬性约束：所有页面禁止左侧彩色边条/左边框着色（零容忍）**。已在 Stitch 4 屏中移除全部左侧色条（详情页候选卡 `border-l` 竖条、审阅页列表卡绝对定位竖条、浮动导航左侧指示点），选中态统一改为「整卡 1px 紫描边 + 浅紫底 #EDE9FE」；规范已写入 `frontend/DESIGN.md`「选中态规范/禁止」节，React 落地时必须遵守。
+> 更新：2026-11-14（第三轮）。**Stitch 页面重设计已完成**：按负责人指定采用 krepling.com 的 Editorial Minimal 风格（暖白 #FAFAF8 底 / 近黑 #0A0A0A 标题 / 淡紫 #8B5CF6 accent / 粉紫渐变点缀 / 20px 大圆角卡 / pill 按钮 / 64-96px 区块留白 / 右侧浮动锚点导航），Stitch 项目「AutoClip UI 重设计（Krepling 风格）」（projectId 8357098000890833051，设计系统 asset assets/2bf24b7aa527476e93d6e1e128abc064）已生成 4 屏：① 首页项目列表（含贴链接导入 hero）② 项目详情（候选切片+进度）③ 设置页 ④ 审阅/渲染工作台。设计规范已落库 `frontend/DESIGN.md`。**待负责人在 Stitch 画布确认后，按页逐一把 React 前端（现为 AntD 默认皮肤）改造为该设计系统。**
+> 更新：2026-11-14。**开源调研优化包（OP-0 ~ OP-6）已在本地实施**，方案与依据见 [09-指定开源项目能力吸收调研报告](docs/09-指定开源项目能力吸收调研报告.md)、[10-通用可借鉴与不可借鉴清单](docs/10-通用可借鉴与不可借鉴清单.md)、[11-优化包实施方案](docs/11-优化包实施方案.md)。本轮改动清单与验证状态见下节「2026-11-14 优化包实施记录」。页面/UI 优化按负责人要求后置，全部功能优化完成后另行用 Stitch 处理。
 > 更新：2026-10-06。**1.5.5 已正式发布为 latest**（tag `v1.5.5` → `e9aba52e`），包含 1.5.1–1.5.4 的全部修复。负责人豁免了未完成的安装包验收和观察期，出问题往前修；豁免范围和上线后要盯的信号见 [1.5.5 发布记录](docs/RELEASE_1_5_5.md)。1.5.1–1.5.3 保持 Pre-release，`v1.5.4` 标签没有生成 Release。待跟进：#247、#249（Whisper 失败）、#266（Gemini key 保存）已请用户在 1.5.5 上复现。
 > 以下为 2026-10-01 的状态：**1.5.0 已通过 [PR #250](https://github.com/zhouxiaoka/autoclip/pull/250) 合入 main，并正式发布为 latest**；固定 tag `v1.5.0` 指向 `e940f5ae`。桌面与 CLI/MCP 从同一 tag 构建，最终资产见 [1.5.0 Release](https://github.com/zhouxiaoka/autoclip/releases/tag/v1.5.0)，应用内更新清单已确认返回 1.5.0。Windows 缺人工界面验收及未完成观察期已在 Release 明确，官网由负责人更新。
 > **验收与同事 CLI / MCP 测试见 [RELEASE_1_5.md](docs/RELEASE_1_5.md)**：竖版选择、片尾开关、字幕修复、完整 headless 出片，以及人物模型漏包 / 长视频队列两个 P1 均已修复并复测。旧候选 wheel 不含最后的长视频修复，同事应以正式 tag 资产为准，同版本候选包须强制重装。
 > **接手 1.5.0 先读 [1.5.0 交接文档](docs/HANDOFF_1_5_FAST_OUTPUT.md)**：现状、负责人决定、迭代过程、代码地图、踩坑和待办都在那里，随进度维护。
 > 下方 2026-09-28 及更早的内容是历史快照。
 
+## 2026-11-14 优化包实施记录（OP-0 ~ OP-6）
+
+依据《11-优化包实施方案》，基于 8 个开源项目的调研成果（09/10 报告）实施。全部为后端功能改动，无 UI 改动。
+
+**已落地（每项均有对应测试）：**
+
+- **OP-1 渲染参数修正**
+  - `utils/video_processor.py`：切片重编码加 `-fps_mode cfr` + `aresample=async=1`（防 VFR 源音画漂移）；movflags 补 `negative_cts_offsets`（防首帧黑帧）；合集拼接改为"ffprobe 参数一致 → concat `-c copy` 流复制，否则回退重编码"；缩略图改输入端 seek 并修复裸 `ffmpeg` 命令名。
+  - `utils/ffmpeg_utils.py`：新增 `is_safe_returncode`（{0,255} 白名单）与 `stderr_tail`（只留尾部 64KB）。
+  - `utils/video_editor.py`：退出码 255 按"中断"记 WARNING 不按失败。
+- **OP-2 LLM 稳定性**
+  - `utils/llm_client.py`：解析终局加 `json_repair` 模糊兜底（只接受 dict/list，垃圾文本仍抛 `ModelResponseInvalid`，语义不变）；`requirements.txt` 增加 `json-repair==0.64.9`。
+  - `utils/llm_json.py`（新）：`repair_parse` / `extract_list`（形态守卫）/ `filter_valid_items`（逐条字段校验跳过，坏条丢弃不毁整单）。
+- **OP-3 渲染提速**
+  - `utils/video_processor.py`：新增 `build_draft_extract_command` / `extract_clip_draft` 草稿档（H.264 源流复制秒出，HEVC/AV1 源回退 ultrafast 重编码保证应用内可播；仅预览用，成片仍走精渲染）。
+  - `utils/bilibili_downloader.py`：yt-dlp 加 `format_sort: vcodec:avc1`（同画质优先 H.264，不用低分辨率换高画质）。
+  - 合集导出（api/v1/projects.py 路径）经 OP-1 流复制自动提速。
+  - **编码器探针/逐条回退本就具备**（`services/video_encoder.py`），未重复实现。
+- **OP-4 成本漏斗**
+  - `utils/danmaku_parser.py`（新）：B站 ASS/XML 弹幕 → 统一事件流，XML 按用户 ID 单人刷屏封顶。
+  - `pipeline/recall.py`（新）：密度滑窗 + 重叠约束贪心召回（移植 auto-slice-video，MIT）；弹幕稀疏自动回退全量路径。
+  - `pipeline/clip_finder.py`：`danmaku_events` 参数接入召回层（默认 None=原行为）；`save_report` 记录 `recalled`。
+  - 预算护栏：设置 `max_llm_input_tokens` 或环境变量 `AUTOCLIP_MAX_LLM_INPUT_TOKENS`，超预算在 LLM 调用前失败；召回生效时预估只统计候选区间。
+- **OP-5 选段质量**
+  - `pipeline/quality.py`：`three_gate_dedupe`（时间重叠>40% / 文本相似>70% / 转写行复用>40%，每条拒绝带理由）。
+  - `pipeline/clip_finder.py`：refine 后接三闸门，`dedupe_rejections` 落 `quality_report.json`；提示词加"评分要苛刻：多数应低于 0.7，真正强才 0.85+"。
+- **OP-6 发布可靠性**
+  - `utils/disk_guard.py`（新）：`ensure_disk_space` 磁盘熔断（fail-open），接线下载前与合集输出前。
+  - `mcp_server.py`：`_make_request` 校验 video_path/srt_path 存在性与文件类型，报错信息可直接执行（传绝对路径）。
+
+**未做 / 延后（含原因）：**
+
+- ~~OP-3.2 分段下载与转写并行~~ → **已补齐（2026-11-14 第二轮，见下节）**。
+- ~~OP-4 弹幕自动抓取~~ → **已补齐（2026-11-14 第二轮，见下节）**。
+- OP-6 通知防抖：`tasks/notification.py` 是纯日志桩，真实通道是 WebSocket，无防抖挂载点——待通知通道产品化时一并做。
+- OP-1 字幕按语言选字体：`services/publish_export.py` 已有 CJK 字体解析（`cjk_font_family`），未重复实现；其余渲染出口沿用同一字体目录。
+- OP-5 双候选池/rerank：需要信号峰值池与一次额外 LLM 调用，成本收益待真实素材 A/B 验证后再决定是否接入（阈值与公式已在 11 报告）。
+- **页面/UI 优化**：按负责人要求，全部功能优化完成后另行用 Stitch 处理。
+
+## 2026-11-14 第二轮：OP-3.2 字幕预取 + OP-4 弹幕自动抓取（功能项闭环）
+
+**OP-3.2 分段下载与转写并行（`services/subtitle_prefetch.py`，新）**
+
+- 灰度开关 `AUTOCLIP_SEGMENTED_IMPORT`（默认关，`1/on/true/yes` 开启），关闭时零行为变化。
+- `download()`（studio/jobs.py）在视频下载开始前调用 `maybe_start` 拉起守护线程：
+  1. probe 平台字幕（有创作者字幕则 `skipped` 让位，不花 ASR）；
+  2. yt-dlp 只拉音频小流（`bestaudio`，体积约为视频 1/10）；
+  3. ffmpeg 转 16 kHz mono wav（与生产 ASR 同规格，T2）；
+  4. 复用现有转写服务（本地 Whisper/SenseVoice/云端百炼路由不变），进度走原 SUBTITLE 通道；
+  5. 结果原子落盘 `raw/input.srt`（目标已存在则丢弃，杜绝竞态覆盖）+ `record_srt_origin('asr')` + 清理中间音频。
+- 消费端：完成即被 R3 断点（`process_project_sync` 的 skip_transcription）**免费消费**；未完成时新增 `wait_for_prefetch`（轮询 marker，进程重启 pid 失活按失败处理，超时 3600s 兜底）——等待后收货或**回退整段转写**，等待异常也绝不阻断主流程。
+- 状态落盘 `raw/.subtitle_prefetch.json`（running/done/skipped/failed），预取任何失败只写 marker、不影响下载与生产。
+
+**OP-4 弹幕自动抓取（`utils/bilibili_danmaku.py`，新）**
+
+- `extract_bvid`（支持 b23.tv 302 解析）→ view API 取 cid → `dm/list.so`（deflate 解压）→ `danmaku_parser.parse_xml` 事件流；全走 B 站公开接口，无需登录，失败任一步返回 None。
+- 接线 `SimplePipelineAdapter._find_clips_in_one_pass`：B 站项目自动抓弹幕（`max_time` 对齐视频末尾）传入 `find_clips(danmaku_events=...)`；YouTube/本地素材返回 None 走原路径。
+- 灰度开关 `AUTOCLIP_DANMAKU_RECALL`（**默认开**；`0/off` 关闭）。召回层本身带稀疏回退（<30 事件回退全量），风险受控。
+
+**测试**：新增 `test_op3_2_subtitle_prefetch.py`（11 项：开关/落盘/竞态丢弃/失败标记/死 pid/超时回退/平台字幕让位）与 `test_op4_danmaku_fetch.py`（10 项：BV 解析/短链/deflate/失败回退/开关/adapter 接线）；受影响区域既有测试 120 项全过。第二轮全量回归 **4445 passed / 48 failed**——比第一轮恰好多 21 项通过（即新增测试），失败集合与第一轮逐项 diff 完全一致（全部为预存 Windows 环境问题），**零新增回归**（对比文件见调研工作区 full_regression2.txt）。
+
+**真机验收待办**：预取需要真实 B 站链接 + 转写服务联调（AUTOCLIP_SEGMENTED_IMPORT=1 跑一条 B 站长视频，观察 `raw/.subtitle_prefetch.json` 状态流转与生产阶段日志 `R3: 消费字幕预取结果`）；弹幕抓取对 B 站链接跑一次 `find_clips` 报告确认 `recalled: true`。
+
+**验证**：新增 6 个测试文件 41 项全部通过；改动前全量基线 4375 passed / 56 failed（失败为本机 Windows 环境预存，含缺 numpy/cv2/duckdb 时少收集的 7 个文件）；改动后全量回归 4424 passed / 48 failed——失败总数下降，疑似新增的 20 项逐一核查（golden 渲染为 Windows 路径分隔符、quick_output_runner 为 `/` 路径断言、attribution 为源码 grep 规则），并用 `git stash` 在改动前代码上复跑确认**同样失败**，即全部为预存环境问题，**本轮改动零回归**。对比清单见调研工作区 baseline_failures.txt / full_regression.txt。**基准素材耗时/成本对比（fast_output_benchmark）需要模型 Key 与网络，待有凭据的环境跑 A/B。**
+
+**回归注意**：`json-repair==0.64.9` 已进 requirements.txt，桌面打包脚本会自动带上；旧环境需重装依赖。
+
 ## 当前交付与验证范围
+
 
 - **2026-09-30 仓库运维整理**：核查根目录旧文件的实际引用，保留两种 Docker 启动入口，合并重复管理脚本，移除无引用的 Tauri RC 依赖与旧 Whisper 全局杀进程工具；现行入口及历史文档分界见 [仓库目录说明](docs/REPOSITORY_LAYOUT.md)。
 - **2026-09-30 本地 SenseVoice 增补（PR #244，已随 1.5.0 发布）**：维护者要求接入 #67 后，设置页增加 SenseVoiceSmall 按需准备与选择；保存后由现有转写入口路由，独立 CPU 进程运行 FunASR，不上传音频、不改变 Whisper 默认值。三系统 Python 3.13 的真实 45 秒访谈离线验收通过，均生成 21 条字幕、157 个词级时间戳，最长约 3.36 秒；窗口安装包尚未做这项新增能力的真机验收。Windows 实装组件与模型约 5.8 GB，准备前建议预留 8 GB。详见 [配置与边界](docs/AI_MODEL_CONFIGURATION.md#本地-sensevoice67)。下方“#67 仍调研、先等通用协议”的文字是历史排期；通用插件框架仍是后续工作，本次具体本地转写能力已经实现。
