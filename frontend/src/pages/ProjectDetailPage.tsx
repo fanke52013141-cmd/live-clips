@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { message } from 'antd'
 import dayjs from 'dayjs'
+import FloatingAnchorNav from '../ui/FloatingAnchorNav'
 import { useProjectStore, Collection } from '../store/useProjectStore'
 import { projectApi, speechApi } from '../services/api'
 import StudioResults from '../features/studio/StudioResults'
@@ -313,8 +314,15 @@ const ProjectDetailPage: React.FC = () => {
 
   return (
     <div className="ac-page">
+      {/* Krepling 特色右侧浮动锚点导航（frontend/DESIGN.md「锚点导航」） */}
+      {isCompleted || isVisual ? (
+        <FloatingAnchorNav items={[
+          { id: 'section-top', label: t('概览') },
+          { id: 'section-results', label: t('剪辑与成片') },
+        ]} />
+      ) : null}
       {/* 页头：返回 · 标题 · mono 元信息 */}
-      <header>
+      <header id="section-top">
         <button className="ac-back" onClick={() => navigate('/')}>
           <Icon.Back />{t("项目")}</button>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24 }}>
@@ -359,7 +367,10 @@ const ProjectDetailPage: React.FC = () => {
             </div>
           </div>
           {isCompleted && clips.length > 0 && (
-            <Btn onClick={() => navigate(`/project/${currentProject.id}/publish`)}>{t("发布")}</Btn>
+            <>
+              <Btn onClick={() => navigate(`/studio/review/${currentProject.id}`)}>{t("候选审核台")}</Btn>
+              <Btn onClick={() => navigate(`/project/${currentProject.id}/publish`)}>{t("发布")}</Btn>
+            </>
           )}
           {!isVisual && currentProject.status === 'pending' && (
             <Btn variant="cta" onClick={() => { trackLegacyEntry({ legacy_action: 'start_processing' }, flagAssigned('hide_legacy_entrypoints')); void handleStartProcessing() }} loading={statusLoading}>{t("开始处理")}</Btn>
@@ -375,19 +386,21 @@ const ProjectDetailPage: React.FC = () => {
       </header>
 
       {isCompleted || isVisual ? (
-        <StudioResults key={currentProject.id} project={currentProject} onCreateCollection={() => setShowCreateCollection(true)} onReload={loadProject}>
-          {sortedCollections.map(collection => <CollectionCard key={collection.id} collection={collection} clips={clips}
-            onView={handleViewCollection}
-            onEdit={() => createDraft(collection.clip_ids, collection.collection_title)}
-            onUpdate={(collectionId, updates) => updateCollection(currentProject.id, collectionId, updates)}
-            onGenerateVideo={async collectionId => { const c = collections.find(x => x.id === collectionId); if(c) await generateAndDownloadCollectionVideo(currentProject.id, collectionId, c.collection_title) }}
-            onDelete={handleDeleteCollection} />)}
-          {getSortedClips().map(clip => <ClipCard key={clip.id} clip={clip} projectId={currentProject.id}
-            onEdit={() => createDraft([clip.id], clip.generated_title || clip.title || t('新成片'))}
-            videoUrl={projectApi.getClipVideoUrl(currentProject.id, clip.id, clip.title || clip.generated_title)}
-            onDownload={clipId => projectApi.downloadVideo(currentProject.id, clipId)}
-            onClipUpdate={(clipId, updates) => setCurrentProject({...currentProject, clips: clips.map(c => c.id === clipId ? {...c, ...updates} : c)})} />)}
-        </StudioResults>
+        <div id="section-results">
+          <StudioResults key={currentProject.id} project={currentProject} onCreateCollection={() => setShowCreateCollection(true)} onReload={loadProject}>
+            {sortedCollections.map(collection => <CollectionCard key={collection.id} collection={collection} clips={clips}
+              onView={handleViewCollection}
+              onEdit={() => createDraft(collection.clip_ids, collection.collection_title)}
+              onUpdate={(collectionId, updates) => updateCollection(currentProject.id, collectionId, updates)}
+              onGenerateVideo={async collectionId => { const c = collections.find(x => x.id === collectionId); if(c) await generateAndDownloadCollectionVideo(currentProject.id, collectionId, c.collection_title) }}
+              onDelete={handleDeleteCollection} />)}
+            {getSortedClips().map(clip => <ClipCard key={clip.id} clip={clip} projectId={currentProject.id}
+              onEdit={() => createDraft([clip.id], clip.generated_title || clip.title || t('新成片'))}
+              videoUrl={projectApi.getClipVideoUrl(currentProject.id, clip.id, clip.title || clip.generated_title)}
+              onDownload={clipId => projectApi.downloadVideo(currentProject.id, clipId)}
+              onClipUpdate={(clipId, updates) => setCurrentProject({...currentProject, clips: clips.map(c => c.id === clipId ? {...c, ...updates} : c)})} />)}
+          </StudioResults>
+        </div>
       ) : isFailed && shownSubtitleKind ? (
         <SubtitleFailureEmpty
           kind={shownSubtitleKind}

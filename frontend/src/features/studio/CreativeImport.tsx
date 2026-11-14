@@ -399,7 +399,7 @@ export default function CreativeImport({ onImported, blocked = false, onBlocked,
     setPending(null)
     if (trigger) trackOneClickUndone({ trigger }, flagAssigned('one_click_paste_start'))
   }
-  const submit = async (trigger: 'paste' | 'drop' | 'button' = 'button', fresh?: ImportReadiness | null, confirmed = false) => {
+  const submit = async (trigger: 'paste' | 'drop' | 'button' = 'button', fresh?: ImportReadiness | null, confirmed = false, reviewFirst = false) => {
     if (starting.current) return
     if (trigger === 'button') setPending(null)
     if (source === 'link' && url.trim() && !urlPreview && !previewLoading) {
@@ -451,7 +451,9 @@ export default function CreativeImport({ onImported, blocked = false, onBlocked,
       const body = new FormData()
       body.append('goal', options.goal); body.append('language', options.language); body.append('instruction', options.instruction)
       platforms.forEach(platform => body.append('platforms', platform))
-      body.append('auto_start', 'true')
+      // 「先看 AI 方案」走审阅（auto_start=false → ImportReview 确认后再制作）；
+      // 「生成成片」保持一键直出（auto_start=true）。
+      body.append('auto_start', reviewFirst ? 'false' : 'true')
       body.append('portrait_style', options.portrait_style || 'auto')
       const portraitChosen = platforms.some(platform => !['bilibili', 'youtube_long', 'original'].includes(platform))
       const styleKey = templatesOn && visualOn && portraitChosen ? (source === 'file' ? (file ? `file:${file.name}:${file.size}:${file.lastModified}` : null) : (url.trim() ? `url:${url.trim()}` : null)) : null
@@ -488,7 +490,7 @@ export default function CreativeImport({ onImported, blocked = false, onBlocked,
       if (remembered) writeRememberedPlatforms(platforms)
       // Project refresh should never make a successful import look like an upload failure.
       void onImported().catch(() => undefined)
-      navigate(`/project/${result.project_id}`)
+      navigate(reviewFirst ? `/import/${result.project_id}` : `/project/${result.project_id}`)
     } catch (e) {
       // the backend gate sends a stable code; the prompt is chosen from it, never from the text.
       const code = errorCode(e)
@@ -576,7 +578,7 @@ export default function CreativeImport({ onImported, blocked = false, onBlocked,
       {platforms.includes('youtube_long') && <p className="studio-muted" role="note">{longFormNotice(longGate.durationSec, platforms)}</p>}
       {assist && <details className="studio-details" open><summary>{t("下载遇到登录限制时")}</summary><BrowserCookieControl assist browser={browser} busy={busy} onChange={setBrowser} selectRef={browserRef} /></details>}
       {pending && <div className="ac-undo" role="status"><span>{t('即将开始制作。')}</span><button type="button" className="ac-undo-action" onClick={undo}>{t('撤销')}</button></div>}
-      <div className="studio-row studio-import-bottom"><div><span className="studio-muted">{t('会按所选平台自动制作，数量由素材内容决定。')}</span>{!hidePreferences && <button className="studio-link studio-preferences-link" disabled={busy} onClick={()=>setPreferences(true)}>{t("高级偏好")}</button>}</div><Btn variant="cta" loading={busy} onClick={() => submit('button')}>{busy?t("正在生成"):t("生成成片")}</Btn></div>
+      <div className="studio-row studio-import-bottom"><div><span className="studio-muted">{t('会按所选平台自动制作，数量由素材内容决定。')}</span>{!hidePreferences && <button className="studio-link studio-preferences-link" disabled={busy} onClick={()=>setPreferences(true)}>{t("高级偏好")}</button>}</div><div className="studio-actions"><Btn disabled={busy} onClick={() => submit('button', undefined, false, true)}>{busy ? t("识别中") : t("先看 AI 方案")}</Btn><Btn variant="cta" loading={busy} onClick={() => submit('button')}>{busy?t("正在生成"):t("生成成片")}</Btn></div></div>
       <TranscriptionGatePrompt state={recovery} busy={busy} onInstall={() => recover.install()} onRetry={() => recover.retry()} onContinue={() => continueAfterRecovery(null)} navigate={navigate}/>
       {error&&<p className="studio-error" role="alert">{error}</p>}
     </div>

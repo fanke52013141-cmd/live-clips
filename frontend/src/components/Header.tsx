@@ -30,7 +30,7 @@ const Header: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: '64px',
+        height: '72px',
         lineHeight: 'normal',
         overflow: 'visible',
         position: 'sticky',
@@ -41,20 +41,32 @@ const Header: React.FC = () => {
         borderBottom: '1px solid var(--ac-line-2)',
       }}
     >
-      {/* Wordmark — serif, italic "Clip" */}
+      {/* Wordmark — Inter 粗体，Krepling 编辑感 */}
       <div
-        style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+        style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '10px' }}
         onClick={() => navigate('/')}
       >
         <span
+          aria-hidden
           style={{
-            fontFamily: 'var(--ac-font-serif)',
-            fontSize: '26px',
-            color: 'var(--ac-ink)',
-            letterSpacing: '0.3px',
+            width: '28px', height: '28px', borderRadius: '50%',
+            background: 'var(--ac-ink)', color: 'var(--ac-cta-fg)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '13px', fontWeight: 700, letterSpacing: '-0.5px',
           }}
         >
-          Auto<em style={{ fontStyle: 'italic' }}>Clip</em>
+          A
+        </span>
+        <span
+          style={{
+            fontFamily: 'var(--ac-font-sans)',
+            fontSize: '19px',
+            fontWeight: 700,
+            color: 'var(--ac-ink)',
+            letterSpacing: '-0.02em',
+          }}
+        >
+          AutoClip
         </span>
       </div>
 
@@ -118,12 +130,12 @@ const Header: React.FC = () => {
           onClick={() => navigate('/settings')}
           aria-current={isSettings ? 'page' : undefined}
           style={{
-            color: isSettings ? 'var(--ac-ink)' : 'var(--ac-sub)',
-            border: '1px solid var(--ac-line)',
+            color: isSettings ? 'var(--ac-accent)' : 'var(--ac-cta-fg)',
             borderRadius: '999px',
-            height: '36px',
-            padding: '0 16px',
-            background: isSettings ? 'var(--ac-line-2)' : 'var(--ac-card)',
+            height: '40px',
+            padding: '0 18px',
+            fontWeight: 500,
+            background: isSettings ? 'var(--ac-sel)' : 'var(--ac-cta-bg)',
           }}
         >{t("设置")}</Button>
         </div>

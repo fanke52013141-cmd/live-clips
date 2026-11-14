@@ -86,22 +86,22 @@ function ThemedApp() {
       theme={{
       algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
       token: {
-        // Calm Premium tokens — see DESIGN.md
-        colorPrimary: isDark ? '#5A8BFF' : '#2D6BFF',
-        colorText: isDark ? '#ECEAE6' : '#1A1A19',
-        colorTextSecondary: isDark ? '#A6A29B' : '#6E6B66',
-        colorBgBase: isDark ? '#19181A' : '#F6F5F3',
+        // Krepling Editorial Minimal tokens — see frontend/DESIGN.md
+        colorPrimary: isDark ? '#A78BFA' : '#8B5CF6',
+        colorText: isDark ? '#ECEAE6' : '#0A0A0A',
+        colorTextSecondary: isDark ? '#C4C2BC' : '#3F3F46',
+        colorBgBase: isDark ? '#19181A' : '#FAFAF8',
         colorBgContainer: isDark ? '#211F22' : '#FFFFFF',
-        colorBorder: isDark ? '#2C2A2D' : '#EBE9E4',
+        colorBorder: isDark ? '#2C2A2D' : '#E7E5E4',
         colorBorderSecondary: isDark ? '#232124' : '#F0EEEA',
-        borderRadius: 10,
-        fontFamily: '"Geist","PingFang SC","Noto Sans SC",system-ui,-apple-system,sans-serif',
+        borderRadius: 12,
+        fontFamily: '"Inter","Geist","PingFang SC","Noto Sans SC",system-ui,-apple-system,sans-serif',
         controlHeight: 38,
       },
       components: {
-        Button: { borderRadius: 999, controlHeight: 40, fontWeight: 500 },
-        Select: { borderRadius: 10 },
-        Card: { borderRadiusLG: 16 },
+        Button: { borderRadius: 999, controlHeight: 40, fontWeight: 500, primaryShadow: 'none' },
+        Select: { borderRadius: 12 },
+        Card: { borderRadiusLG: 20 },
       },
     }}
     >

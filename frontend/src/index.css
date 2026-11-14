@@ -1,26 +1,28 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&family=Noto+Sans+SC:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&family=Noto+Sans+SC:wght@400;500&display=swap');
 
-/* ===== AutoClip · Calm Premium design tokens (see DESIGN.md) ===== */
+/* ===== AutoClip · Krepling Editorial Minimal design tokens (see frontend/DESIGN.md) ===== */
 :root{
-  --ac-bg:#F6F5F3; --ac-card:#FFFFFF; --ac-ink:#1A1A19; --ac-sub:#6E6B66; --ac-muted:#A8A59F;
-  --ac-line:#EBE9E4; --ac-line-2:#F0EEEA; --ac-accent:#2D6BFF; --ac-thumb:#EEECE8; --ac-sel:#EFEDE9;
-  --ac-cta-bg:#1A1A19; --ac-cta-fg:#FFFFFF; --ac-ok:#5BB36A; --ac-error:#E66A5C; --ac-warn:#E6B23C;
-  --ac-sel:#EFEDE9;
-  --ac-font-sans:"Geist","PingFang SC","Noto Sans SC",system-ui,-apple-system,sans-serif;
+  --ac-bg:#FAFAF8; --ac-card:#FFFFFF; --ac-ink:#0A0A0A; --ac-sub:#3F3F46; --ac-muted:#71717A;
+  --ac-line:#E7E5E4; --ac-line-2:#F0EEEA; --ac-accent:#8B5CF6; --ac-thumb:#F0EDEB; --ac-sel:#EDE9FE;
+  --ac-accent-hover:#7C3AED; --ac-border-purple:#C4B5FD;
+  --ac-gradient:linear-gradient(115deg,#FCD9C8 0%,#C9B8F5 55%,#DDD6FE 100%);
+  --ac-cta-bg:#0A0A0A; --ac-cta-fg:#FFFFFF; --ac-ok:#16A34A; --ac-error:#DC2626; --ac-warn:#D97706;
+  --ac-font-sans:"Inter","Geist","PingFang SC","Noto Sans SC",system-ui,-apple-system,sans-serif;
   --ac-font-serif:"Instrument Serif",Georgia,serif;
   --ac-font-mono:"Geist Mono",ui-monospace,monospace;
-  --ac-shadow:0 1px 2px rgba(26,26,25,.03), 0 8px 24px rgba(26,26,25,.05);
+  --ac-shadow:0 1px 2px rgba(10,10,10,.04), 0 8px 24px rgba(10,10,10,.04);
   --ac-ease-out:cubic-bezier(.2,.7,.2,1); --ac-t-micro:100ms; --ac-t-short:200ms;
   --ac-space-2:2px; --ac-space-xs:4px; --ac-space-sm:8px; --ac-space-md:16px;
   --ac-space-lg:24px; --ac-space-xl:32px; --ac-space-2xl:40px; --ac-space-3xl:56px;
-  --ac-radius:16px; --ac-radius-sm:10px; --ac-radius-pill:999px;
+  --ac-radius:20px; --ac-radius-sm:12px; --ac-radius-pill:999px;
 }
 [data-theme="dark"]{
-  --ac-bg:#19181A; --ac-card:#211F22; --ac-ink:#ECEAE6; --ac-sub:#A6A29B; --ac-muted:#76726C;
-  --ac-line:#2C2A2D; --ac-line-2:#232124; --ac-accent:#5A8BFF; --ac-thumb:#262428; --ac-sel:#2A282B;
+  --ac-bg:#19181A; --ac-card:#211F22; --ac-ink:#ECEAE6; --ac-sub:#C4C2BC; --ac-muted:#8B8781;
+  --ac-line:#2C2A2D; --ac-line-2:#232124; --ac-accent:#A78BFA; --ac-thumb:#262428; --ac-sel:#2E2A33;
+  --ac-accent-hover:#B7A4FB; --ac-border-purple:#5B3FA8;
+  --ac-gradient:linear-gradient(115deg,#4A2E24 0%,#3B2E55 55%,#332B4F 100%);
   --ac-cta-bg:#ECEAE6; --ac-cta-fg:#19181A;
-  --ac-sel:#2A282B;
   --ac-shadow:0 1px 2px rgba(0,0,0,.2), 0 8px 24px rgba(0,0,0,.28);
 }
 html,body,#root{background:var(--ac-bg);color:var(--ac-ink);}
@@ -794,3 +796,21 @@ body { font-family: var(--ac-font-sans) !important; }
 .upload-area { background: var(--ac-line-2) !important; border: 2px dashed var(--ac-line) !important; }
 .upload-area:hover { border-color: var(--ac-accent) !important; background: color-mix(in srgb, var(--ac-accent) 6%, var(--ac-card)) !important; box-shadow: var(--ac-shadow) !important; }
 .upload-area.dragover { border-color: var(--ac-accent) !important; background: color-mix(in srgb, var(--ac-accent) 10%, var(--ac-card)) !important; }
+
+/* ============================================================
+   表格 / 分页 / 标签页浅色覆盖 — 胜过上方 legacy dark 块。
+   规范：白底、1px 行分隔、无斑马纹、hover 暖白（frontend/DESIGN.md）。
+   ============================================================ */
+.ant-table { background-color: var(--ac-card) !important; color: var(--ac-ink) !important; }
+.ant-table-thead > tr > th { background-color: var(--ac-card) !important; color: var(--ac-sub) !important; border-bottom: 1px solid var(--ac-line) !important; font-weight: 500 !important; }
+.ant-table-tbody > tr > td { background-color: var(--ac-card) !important; color: var(--ac-ink) !important; border-bottom: 1px solid var(--ac-line) !important; }
+.ant-table-tbody > tr:hover > td { background-color: var(--ac-bg) !important; }
+.ant-table-tbody > tr > td.ant-table-cell-row-hover { background-color: var(--ac-bg) !important; }
+.ant-pagination-item { background-color: var(--ac-card) !important; border-color: var(--ac-line) !important; color: var(--ac-sub) !important; }
+.ant-pagination-item:hover, .ant-pagination-item-active { border-color: var(--ac-accent) !important; color: var(--ac-accent) !important; }
+.ant-tabs-tab { color: var(--ac-sub) !important; }
+.ant-tabs-tab:hover { color: var(--ac-ink) !important; }
+.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn { color: var(--ac-accent) !important; }
+.ant-tabs-ink-bar { background-color: var(--ac-accent) !important; }
+.ant-tabs-content-holder { color: var(--ac-ink) !important; }
+.ant-modal-footer { border-top: 1px solid var(--ac-line) !important; }
